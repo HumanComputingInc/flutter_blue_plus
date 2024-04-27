@@ -77,8 +77,8 @@ BLEHelper::BLEHelper(
 {
     try
     {
-        mhSystemDevices = CreateEvent(NULL, TRUE, FALSE, NULL);
-
+        mhSysScanEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
+        mLogFile = std::ofstream("log.txt");
         //all ble devices and connected
         auto sysDevciesFilter = L"System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\" AND System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True";
         auto allBleDeviceFilte = L"System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\"";
@@ -134,7 +134,8 @@ BLEHelper::BLEHelper(
 BLEHelper::~BLEHelper(
     )
 {
-    CloseHandle(mhSystemDevices);
+    mLogFile.close();
+    CloseHandle(mhSysScanEvent);
     mDeviceWatcher = nullptr;
 }
 
@@ -187,9 +188,11 @@ LONG BLEHelper::StartScan(
 LONG BLEHelper::StopScan(
     )
 {
+    WriteLogFile("StopScan1");
     if (mDeviceWatcher != nullptr)
         mDeviceWatcher.Stop();
 
+    WriteLogFile("StopScan2");
     return 0;
 }
 
@@ -198,7 +201,7 @@ LONG BLEHelper::StopScan(
 LONG BLEHelper::SysStartScan(
     )
 {
-    ResetEvent(mhSystemDevices);
+    ResetEvent(mhSysScanEvent);
     mSysDevices.clear();
     if (mSysDeviceWatcher == nullptr)
         return ERR_NO_DEVICE_WATCHER;
@@ -332,6 +335,7 @@ void BLEHelper::SendConnectionState(
 
     std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(map);
 
+    WriteLogFile(("OnConnectionStateChanged on " + mac).c_str());
     flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnConnectionStateChanged", std::move(res));
 }
 
@@ -401,7 +405,7 @@ void BLEHelper::SysDeviceWatcher_EnumerationCompleted(
     )
 {
     //we are done
-    SetEvent(mhSystemDevices);
+    SetEvent(mhSysScanEvent);
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -420,7 +424,7 @@ std::map<std::string, flutter::EncodableMap> BLEHelper::GetSysDevices(
     )
 {
     //we do not care about the results right now
-    WaitForSingleObject(mhSystemDevices, 500);
+    WaitForSingleObject(mhSysScanEvent, 500);
     return mSysDevices;
 }
 
@@ -455,7 +459,9 @@ void BLEHelper::BluetoothLEDevice_ConnectionStatusChanged(
     std::string mac = LongToMac(sender.BluetoothAddress());
 
     OutputDebugString((L"BluetoothLEDevice_ConnectionStatusChanged on " + winrt::to_hstring(mac) + L"\n").c_str());
+    WriteLogFile(("BluetoothLEDevice_ConnectionStatusChanged on " + mac).c_str());
     SendConnectionState(mac, sender.ConnectionStatus());
+    WriteLogFile("SendConnectionState done");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -467,25 +473,28 @@ winrt::fire_and_forget BLEHelper::ConnectDevice(
     LONG64 deviceID64 = MacToLong(deviceID);
 
     OutputDebugString( (L"ConnectDevice " + winrt::to_hstring(deviceID) + L"\n").c_str() );
+    WriteLogFile(("ConnectDevice  " + deviceID).c_str());
 
     try {
         mConnectedDevice = co_await BluetoothLEDevice::FromBluetoothAddressAsync(deviceID64);
         OutputDebugString(L"FromBluetoothAddressAsync finished");
+        WriteLogFile("FromBluetoothAddressAsync finished");
     }
     catch (...)
     {
         OutputDebugString(L"FromBluetoothAddressAsync crashed");
-        printf("crash");
+        WriteLogFile("FromBluetoothAddressAsync crashed");
     }
 
     if (mConnectedDevice == nullptr) {
+        WriteLogFile("mConnectedDevice is null");
         SendConnectionState(deviceID, BluetoothConnectionStatus::Disconnected);
         co_return;
     }
 
     OutputDebugString(L"we got device!");
+    WriteLogFile("we got device!");
     mConnectedDevice.ConnectionStatusChanged({ this, &BLEHelper::BluetoothLEDevice_ConnectionStatusChanged });
-
     BluetoothLEDevice_ConnectionStatusChanged(mConnectedDevice,nullptr);
 
     co_return;
@@ -510,9 +519,10 @@ winrt::fire_and_forget BLEHelper::NotifyForAdapterState(
 
     for (int i = 0; i < 5;i++)
     {
-        Sleep(1000);
+        Sleep(500);
         std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(resMap);
 
+        WriteLogFile("OnAdapterStateChanged");
         flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod(
             "OnAdapterStateChanged", std::move(res));
     }
@@ -522,3 +532,11 @@ winrt::fire_and_forget BLEHelper::NotifyForAdapterState(
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+void BLEHelper::WriteLogFile(
+    std::string msg
+    )
+{
+    mLogFile << msg << std::endl;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////

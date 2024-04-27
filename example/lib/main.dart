@@ -1,18 +1,48 @@
-// Copyright 2017-2023, Charles Weinberger & Paul DeMarco.
-// All rights reserved. Use of this source code is governed by a
-// BSD-style license that can be found in the LICENSE file.
-
 import 'dart:async';
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-
+import 'package:logger/logger.dart';
+import 'package:path_provider/path_provider.dart';
 import 'screens/bluetooth_off_screen.dart';
 import 'screens/scan_screen.dart';
+import 'package:intl/intl.dart';
+import 'package:path/path.dart' as PathUtils;
+import 'package:logger/logger.dart';
 
-void main() {
-  FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
-  runApp(const FlutterBlueApp());
+void main() async{
+  String fileName = DateFormat("ddMMMyy").format(DateTime.now());
+  Directory applicationDir = await getApplicationDocumentsDirectory();
+  Directory logsDir = Directory(PathUtils.join(applicationDir.path,"BTLogs"));
+
+  String logFile = PathUtils.join(
+      logsDir.path,
+      "BT_${fileName}.log");
+
+  Logger logger = Logger(
+      filter: ProductionFilter(),
+      level: Level.all,
+      printer: PrettyPrinter(colors: false, noBoxingByDefault: true, printEmojis: false,printTime:false,methodCount: 0),
+      output:FileOutput(file: File(logFile)));
+
+  if(!logsDir.existsSync()){
+    logsDir.createSync();
+  }
+
+  runZonedGuarded(() async {
+    logger.i("app starting");
+    WidgetsFlutterBinding.ensureInitialized();
+    FlutterBluePlus.setLogLevel(LogLevel.verbose, color: true);
+    runApp( FlutterBlueApp(logger));
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+      logger.e("crash!" + details.toString());
+      logger.e("crash!",error:details.exception,stackTrace: details.stack);
+      //LogsLib.FlutterLogs.logInfo("APP", "FLUTTER ERROR1", details.toString());
+    };
+  }, (Object error, StackTrace stack) {
+    logger.e("crash3",error:error,stackTrace: stack);
+  });
 }
 
 //
@@ -20,7 +50,8 @@ void main() {
 // ScanScreen depending on the adapter state
 //
 class FlutterBlueApp extends StatefulWidget {
-  const FlutterBlueApp({Key? key}) : super(key: key);
+  Logger logger;
+  FlutterBlueApp(this.logger,{Key? key}) : super(key: key);
 
   @override
   State<FlutterBlueApp> createState() => _FlutterBlueAppState();
@@ -51,12 +82,12 @@ class _FlutterBlueAppState extends State<FlutterBlueApp> {
   @override
   Widget build(BuildContext context) {
     Widget screen = _adapterState == BluetoothAdapterState.on
-        ? const ScanScreen()
+        ? ScanScreen(widget.logger)
         : BluetoothOffScreen(adapterState: _adapterState);
 
     return MaterialApp(
       color: Colors.lightBlue,
-      home: screen,
+      home: ScanScreen(widget.logger),
       navigatorObservers: [BluetoothAdapterStateObserver()],
     );
   }
@@ -90,3 +121,4 @@ class BluetoothAdapterStateObserver extends NavigatorObserver {
     _adapterStateSubscription = null;
   }
 }
+

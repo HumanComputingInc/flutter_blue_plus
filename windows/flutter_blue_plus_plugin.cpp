@@ -30,7 +30,6 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-
 namespace flutter_blue_plus {
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -90,7 +89,8 @@ void FlutterBluePlusPlugin::HandleMethodCall(
     std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result
     )
 {
-  OutputDebugString((L"HandleMethodCall " + winrt::to_hstring(method_call.method_name()) + L"\n").c_str());
+    mpBleHelper->WriteLogFile(("HandleMethodCall " + method_call.method_name()).c_str());
+    OutputDebugString((L"HandleMethodCall " + winrt::to_hstring(method_call.method_name()) + L"\n").c_str());
   if (method_call.method_name().compare("getPlatformVersion") == 0) {
     std::ostringstream version_stream;
     version_stream << "Windows ";
@@ -116,10 +116,9 @@ void FlutterBluePlusPlugin::HandleMethodCall(
       Windows::Devices::Radios::RadioState BtState = mpBleHelper->GetBtState();
       int btStateMap = bmAdapterStateEnum(BtState);
 
-      //mpBleHelper->NotifyForAdapterState();
+      mpBleHelper->NotifyForAdapterState();
 
       result->Success(flutter::EncodableMap{{"adapter_state",btStateMap}});
-
   }
   else if (method_call.method_name().compare("startScan") == 0)
   {
@@ -128,6 +127,7 @@ void FlutterBluePlusPlugin::HandleMethodCall(
       std::vector<flutter::EncodableValue> serviceList = std::get<std::vector<flutter::EncodableValue>>(withServices);
 
       mpBleHelper->StartScan();
+
       result->Success(true);
   }
   else if (method_call.method_name().compare("getSystemDevices") == 0)
@@ -150,6 +150,7 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   else if (method_call.method_name().compare("stopScan") == 0)
   {
       mpBleHelper->StopScan();
+      result->Success(true);
   }
   else if (method_call.method_name().compare("connect") == 0)
   {
@@ -164,17 +165,18 @@ void FlutterBluePlusPlugin::HandleMethodCall(
       mpBleHelper->DisconnectDevice();
       result->Success(true);
   }
+ 
   else if (method_call.method_name().compare("discoverServices") == 0)
   {
-      flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
-      std::string  mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
-
-      mpBleHelper->ConnectDevice(mac);
+  }
+  else if (method_call.method_name().compare("readRssi") == 0)
+  {
       result->Success(true);
   }
   else
   {
-    result->NotImplemented();
+        mpBleHelper->WriteLogFile(("Not implemented - " + method_call.method_name()).c_str());
+        result->NotImplemented();
   }
 }
 

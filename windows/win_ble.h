@@ -31,6 +31,10 @@
 #include <algorithm>
 #include <iomanip>
 
+#include <fstream>
+#include <string>
+#include <iostream>
+
 //////////////////////////////////////////////////////////////////////////////////////////
 
 using namespace winrt;
@@ -72,7 +76,7 @@ class BLEHelper
     BluetoothLEDevice mConnectedDevice{ nullptr };
     Radio mRadio{ nullptr };
     BluetoothAdapter mAdapter{ nullptr };
-    HANDLE mhSystemDevices;
+    HANDLE mhSysScanEvent;
 
     winrt::event_token mDeviceWatcherAddedToken;
     winrt::event_token mDeviceWatcherUpdatedToken;
@@ -89,6 +93,8 @@ class BLEHelper
     winrt::event_token mConnnectionStatusChangedToken;
     std::map<std::string, flutter::EncodableMap> mDevices;
     std::map<std::string, flutter::EncodableMap> mSysDevices;
+
+    std::ofstream mLogFile;
 public:
     BLEHelper(
         );
@@ -193,6 +199,7 @@ public:
     void BluetoothLEDevice_ConnectionStatusChanged(BluetoothLEDevice sender, IInspectable args);
 
     winrt::fire_and_forget NotifyForAdapterState();
+    void WriteLogFile(std::string msg);
 };
 
 

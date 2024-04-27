@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:logger/logger.dart';
 
 import '../widgets/service_tile.dart';
 import '../widgets/characteristic_tile.dart';
@@ -10,9 +11,12 @@ import '../utils/snackbar.dart';
 import '../utils/extra.dart';
 
 class DeviceScreen extends StatefulWidget {
+  Logger logger;
   final BluetoothDevice device;
 
-  const DeviceScreen({Key? key, required this.device}) : super(key: key);
+  DeviceScreen(this.logger,{Key? key, required this.device}) : super(key: key){
+    logger.i("DeviceScreen created");
+  }
 
   @override
   State<DeviceScreen> createState() => _DeviceScreenState();
@@ -36,7 +40,9 @@ class _DeviceScreenState extends State<DeviceScreen> {
   void initState() {
     super.initState();
 
+    widget.logger.i("S1");
     _connectionStateSubscription = widget.device.connectionState.listen((state) async {
+      widget.logger.i("S2");
       _connectionState = state;
       if (state == BluetoothConnectionState.connected) {
         _services = []; // must rediscover services
@@ -50,6 +56,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     });
 
     _mtuSubscription = widget.device.mtu.listen((value) {
+      widget.logger.i("S3");
       _mtuSize = value;
       if (mounted) {
         setState(() {});
@@ -57,6 +64,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     });
 
     _isConnectingSubscription = widget.device.isConnecting.listen((value) {
+      widget.logger.i("S4");
       _isConnecting = value;
       if (mounted) {
         setState(() {});
@@ -64,6 +72,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
     });
 
     _isDisconnectingSubscription = widget.device.isDisconnecting.listen((value) {
+      widget.logger.i("S5");
       _isDisconnecting = value;
       if (mounted) {
         setState(() {});
@@ -86,6 +95,8 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   Future onConnectPressed() async {
     try {
+      widget.logger.i("S7");
+
       await widget.device.connectAndUpdateStream();
       Snackbar.show(ABC.c, "Connect: Success", success: true);
     } catch (e) {
@@ -237,6 +248,7 @@ class _DeviceScreenState extends State<DeviceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    widget.logger.i("S71");
     return ScaffoldMessenger(
       key: Snackbar.snackBarKeyC,
       child: Scaffold(

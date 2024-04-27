@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:logger/logger.dart';
 
 import 'device_screen.dart';
 import '../utils/snackbar.dart';
@@ -10,7 +11,8 @@ import '../widgets/scan_result_tile.dart';
 import '../utils/extra.dart';
 
 class ScanScreen extends StatefulWidget {
-  const ScanScreen({Key? key}) : super(key: key);
+  Logger logger;
+  ScanScreen(this.logger,{Key? key}) : super(key: key);
 
   @override
   State<ScanScreen> createState() => _ScanScreenState();
@@ -76,12 +78,23 @@ class _ScanScreenState extends State<ScanScreen> {
   }
 
   void onConnectPressed(BluetoothDevice device) {
+    widget.logger.i("connect pressed");
     device.connectAndUpdateStream().catchError((e) {
+      widget.logger.e("connect error" + e.toString());
       Snackbar.show(ABC.c, prettyException("Connect Error:", e), success: false);
     });
-    MaterialPageRoute route = MaterialPageRoute(
-        builder: (context) => DeviceScreen(device: device), settings: RouteSettings(name: '/DeviceScreen'));
-    Navigator.of(context).push(route);
+
+    widget.logger.i("starting the new page");
+    try {
+      widget.logger.i("device.remoteId" + device.remoteId.toString());
+      MaterialPageRoute route = MaterialPageRoute(
+          builder: (context) => DeviceScreen(widget.logger, device: device)
+          );
+      Navigator.of(context).push(route);
+    }
+    catch(err,stack){
+      widget.logger.e("cur",error: err,stackTrace: stack);
+    }
   }
 
   Future onRefresh() {
@@ -113,7 +126,7 @@ class _ScanScreenState extends State<ScanScreen> {
             device: d,
             onOpen: () => Navigator.of(context).push(
               MaterialPageRoute(
-                builder: (context) => DeviceScreen(device: d),
+                builder: (context) => DeviceScreen(widget.logger, device: d),
                 settings: RouteSettings(name: '/DeviceScreen'),
               ),
             ),
