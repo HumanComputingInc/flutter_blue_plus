@@ -174,19 +174,21 @@ class BmScanResponse {
     required this.errorString,
   });
 
-  factory BmScanResponse.fromMap(Map<dynamic, dynamic> json) {
+  factory BmScanResponse.fromMap(Map<dynamic, dynamic> jsonData) {
+    //String data = json.encode(jsonData);
+    //print(data);
     List<BmScanAdvertisement> advertisements = [];
-    for (var item in json['advertisements']) {
+    for (var item in jsonData['advertisements']) {
       advertisements.add(BmScanAdvertisement.fromMap(item));
     }
 
-    bool success = json['success'] == null || json['success'] != 0;
+    bool success = jsonData['success'] == null || jsonData['success'] != 0;
 
     return BmScanResponse(
       advertisements: advertisements,
       success: success,
-      errorCode: !success ? json['error_code'] : 0,
-      errorString: !success ? json['error_string'] : "",
+      errorCode: !success ? jsonData['error_code'] : 0,
+      errorString: !success ? jsonData['error_string'] : "",
     );
   }
 }
