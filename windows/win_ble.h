@@ -67,13 +67,21 @@ int bmConnectionStatusEnum(BluetoothConnectionStatus status);
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+class ServiceData
+{
+private:
+public:
+    GattDeviceService service{nullptr};
+    std::vector<GattCharacteristic> chars;
+};
+
+//////////////////////////////////////////////////////////////////////////////////////////
 
 class BLEHelper
 {
     DeviceWatcher mDeviceWatcher{ nullptr };
     //used for system device call
     DeviceWatcher mSysDeviceWatcher{ nullptr };
-    BluetoothLEDevice mConnectedDevice{ nullptr };
     Radio mRadio{ nullptr };
     BluetoothAdapter mAdapter{ nullptr };
     HANDLE mhSysScanEvent;
@@ -93,8 +101,11 @@ class BLEHelper
     winrt::event_token mConnnectionStatusChangedToken;
     std::map<std::string, flutter::EncodableMap> mDevices;
     std::map<std::string, flutter::EncodableMap> mSysDevices;
-
     std::ofstream mLogFile;
+
+    //connected device data
+    BluetoothLEDevice mConnectedDevice{ nullptr };
+    std::vector<ServiceData> mSerivces;
 public:
     BLEHelper(
         );
@@ -200,8 +211,10 @@ public:
 
     winrt::fire_and_forget NotifyForAdapterState();
     void WriteLogFile(std::string msg);
-};
+    winrt::fire_and_forget GetServices();
+    winrt::fire_and_forget FakeRSSI();
 
+};
 
 //////////////////////////////////////////////////////////////////////////////////////////
 

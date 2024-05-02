@@ -116,7 +116,8 @@ void FlutterBluePlusPlugin::HandleMethodCall(
       Windows::Devices::Radios::RadioState BtState = mpBleHelper->GetBtState();
       int btStateMap = bmAdapterStateEnum(BtState);
 
-      mpBleHelper->NotifyForAdapterState();
+      //hack for not getting 
+      //mpBleHelper->NotifyForAdapterState();
 
       result->Success(flutter::EncodableMap{{"adapter_state",btStateMap}});
   }
@@ -168,9 +169,24 @@ void FlutterBluePlusPlugin::HandleMethodCall(
  
   else if (method_call.method_name().compare("discoverServices") == 0)
   {
+      mpBleHelper->GetServices();
+      result->Success(true);
   }
   else if (method_call.method_name().compare("readRssi") == 0)
   {
+      mpBleHelper->FakeRSSI();
+      result->Success(true);
+  }
+  else if (method_call.method_name().compare("setNotifyValue") == 0)
+  {
+      /**
+      flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
+      std::string mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
+      std::string service_uuid = std::get<std::string>(args[flutter::EncodableValue("service_uuid")]);
+      std::string characteristic_uuid = std::get<std::string>(args[flutter::EncodableValue("characteristic_uuid")]);
+      bool enable = std::get<bool>(args[flutter::EncodableValue("remote_id")]);
+      bool forceIndications = std::get<bool>(args[flutter::EncodableValue("force_indications")]);
+      **/
       result->Success(true);
   }
   else

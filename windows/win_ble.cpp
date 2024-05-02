@@ -8,6 +8,11 @@
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+#define GUID_FORMAT "%08x-%04hx-%04hx-%02hhx%02hhx-%02hhx%02hhx%02hhx%02hhx%02hhx%02hhx"
+#define GUID_ARG(guid) guid.Data1, guid.Data2, guid.Data3, guid.Data4[0], guid.Data4[1], guid.Data4[2], guid.Data4[3], guid.Data4[4], guid.Data4[5], guid.Data4[6], guid.Data4[7]
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 int bmAdapterStateEnum(Windows::Devices::Radios::RadioState as) {
     switch (as)
     {
@@ -38,6 +43,18 @@ int bmConnectionStatusEnum(BluetoothConnectionStatus status) {
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+std::string UuidToString(
+    winrt::guid guid
+    )
+{
+    char chars[36 + 1];
+    sprintf_s(chars, GUID_FORMAT, GUID_ARG(guid));
+
+    return std::string{ chars };
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 LONG64 MacToLong(
     std::string deviceID
     )
@@ -48,6 +65,8 @@ LONG64 MacToLong(
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //mac is always with ::::
+//////////////////////////////////////////////////////////////////////////////////////////
+
 static std::string DeviceIdToMac(
     std::string deviceID
     )
@@ -82,14 +101,13 @@ BLEHelper::BLEHelper(
         //all ble devices and connected
         auto sysDevciesFilter = L"System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\" AND System.Devices.Aep.IsConnected:=System.StructuredQueryType.Boolean#True";
         auto allBleDeviceFilte = L"System.Devices.Aep.ProtocolId:=\"{bb7bb05e-5972-42b5-94fc-76eaa7084d49}\"";
-
-            auto requestedProperties = {
-                L"System.Devices.Aep.Category",
-                L"System.Devices.Aep.ContainerId",
-                L"System.Devices.Aep.DeviceAddress",
-                L"System.Devices.Aep.IsConnected"
-                //L"System.Devices.Aep.Bluetooth.Le.IsConnectable",
-                //L"System.Devices.Aep.SignalStrength"
+        auto requestedProperties = {
+            L"System.Devices.Aep.Category",
+            L"System.Devices.Aep.ContainerId",
+            L"System.Devices.Aep.DeviceAddress",
+            L"System.Devices.Aep.IsConnected"
+            //L"System.Devices.Aep.Bluetooth.Le.IsConnectable",
+            //L"System.Devices.Aep.SignalStrength"
         };
 
         mDeviceWatcher = DeviceInformation::CreateWatcher(
@@ -163,10 +181,10 @@ IAsyncOperation<int> BLEHelper::InitRadio(
 VOID BLEHelper::DisconnectDevice(
     )
 {
-    if (mConnectedDevice)
-    {
+    if (mConnectedDevice != nullptr)
         mConnectedDevice = nullptr;
-    }
+
+    mSerivces.clear();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -501,14 +519,6 @@ winrt::fire_and_forget BLEHelper::ConnectDevice(
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
-/**
-winrt::fire_and_forget BLEHelper::GetServices(
-    )
-{
-    //get sevceis and call on service found
-}
-**/
-//////////////////////////////////////////////////////////////////////////////////////////
 
 winrt::fire_and_forget BLEHelper::NotifyForAdapterState(
     )
@@ -519,7 +529,6 @@ winrt::fire_and_forget BLEHelper::NotifyForAdapterState(
 
     for (int i = 0; i < 5;i++)
     {
-        Sleep(500);
         std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(resMap);
 
         WriteLogFile("OnAdapterStateChanged");
@@ -540,3 +549,157 @@ void BLEHelper::WriteLogFile(
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+
+int HasProp(
+    GattCharacteristicProperties props,
+    GattCharacteristicProperties prop
+    )
+{
+    return ((props & prop) == prop) ? 1 : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+flutter::EncodableMap ExportCharacteristic(
+    GattCharacteristic theChar,
+    GattDescriptorsResult descriptors,
+    std::string deviceID
+    )
+{
+    std::vector<flutter::EncodableValue> descriptorsArray;
+
+    for (uint32_t i = 0; i < descriptors.Descriptors().Size();i++)
+    {
+        GattDescriptor descr = descriptors.Descriptors().GetAt(i);
+        flutter::EncodableMap descrMap = {
+            {"service_uuid",UuidToString(theChar.Service().Uuid())},
+            {"remote_id",deviceID},
+            {"descriptor_uuid",UuidToString(descr.Uuid())},
+            {"characteristic_uuid", UuidToString(theChar.Uuid())}
+        };
+
+        descriptorsArray.push_back(descrMap);
+    }
+
+    GattCharacteristicProperties props = theChar.CharacteristicProperties();
+
+    flutter::EncodableMap propsMap = {
+        {"broadcast", HasProp(props,GattCharacteristicProperties::Broadcast)},
+        {"write_without_response", HasProp(props,GattCharacteristicProperties::WriteWithoutResponse)},
+        //todo
+        {"notify_encryption_required", 0},
+        {"read", HasProp(props,GattCharacteristicProperties::Read)},
+        {"authenticated_signed_writes", HasProp(props,GattCharacteristicProperties::AuthenticatedSignedWrites)},
+        {"extended_properties", HasProp(props,GattCharacteristicProperties::ExtendedProperties)},
+        {"indicate", HasProp(props,GattCharacteristicProperties::Indicate)},
+        //todo?
+        {"indicate_encryption_required", 0},
+        {"write", HasProp(props,GattCharacteristicProperties::Write)},
+        {"notify", HasProp(props,GattCharacteristicProperties::Notify)}
+    };
+
+    flutter::EncodableMap characteristic = {
+        {"descriptors",descriptorsArray},
+        {"service_uuid",UuidToString(theChar.Service().Uuid())},
+        {"remote_id",deviceID},
+        {"characteristic_uuid",UuidToString(theChar.Uuid())},
+        {"properties",propsMap}
+    };
+
+
+    return characteristic;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+winrt::fire_and_forget BLEHelper::GetServices(
+    )
+{
+    if (mConnectedDevice == nullptr)
+        co_return;
+
+    GattDeviceServicesResult Services = co_await mConnectedDevice.GetGattServicesAsync(BluetoothCacheMode::Uncached);
+
+    if (Services == nullptr)
+        co_return;
+
+    std::string mac = DeviceIdToMac(winrt::to_string(mConnectedDevice.DeviceId()));
+
+    std::vector<flutter::EncodableValue> servicesArray;
+    uint32_t servicesCount = Services.Services().Size();
+
+    for (uint32_t i = 0; i < servicesCount; i++)
+    {
+        GattDeviceService service = Services.Services().GetAt(i);
+        std::string serviceUUID = UuidToString(service.Uuid());
+        GattCharacteristicsResult chars = co_await service.GetCharacteristicsAsync();
+
+        ServiceData serviceData;
+        mSerivces.push_back(serviceData);
+
+        std::vector<flutter::EncodableValue> charsArray;
+        if (chars != nullptr)
+        {
+            for (uint32_t j = 0; j < chars.Characteristics().Size();j++)
+            {
+                //single charactersitic
+                GattCharacteristic theChar = chars.Characteristics().GetAt(j);
+                GattDescriptorsResult descriptors = co_await theChar.GetDescriptorsAsync();
+
+                charsArray.push_back(ExportCharacteristic(theChar,descriptors,mac));
+                serviceData.chars.push_back(theChar);
+            }
+        }
+
+        std::vector<flutter::EncodableValue> includedservices;
+        flutter::EncodableMap serviceMap = {
+            {"included_services",includedservices},
+            {"is_primary",1},
+            {"service_uuid",serviceUUID},
+            {"remote_id", mac},
+            {"characteristics",charsArray}
+        };
+
+        servicesArray.push_back(serviceMap);
+    }
+
+    //export it all now
+    flutter::EncodableMap servicesMap = {
+        {"error_string","GATT_SUCCESS"},
+        {"success", 1},
+        {"remote_id",mac},
+        {"error_code", 0},
+        {"services",servicesArray}
+    };
+
+    //servicesMap["services"] = "servicesArray";
+    std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(servicesMap);
+
+    flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnDiscoveredServices", std::move(res));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+winrt::fire_and_forget BLEHelper::FakeRSSI(
+    )
+{
+    std::string mac = DeviceIdToMac(winrt::to_string(mConnectedDevice.DeviceId()));
+    Sleep(100);
+
+    flutter::EncodableMap servicesMap = {
+        {"remote_id",mac },
+        {"rssi", -90},
+        {"success",1},
+        {"error_code", 0},
+        {"error_string","GATT_SUCCESS"}
+    };
+
+    std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(servicesMap);
+
+    flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnReadRssi", std::move(res));
+
+    co_return;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
