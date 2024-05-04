@@ -55,6 +55,18 @@ std::string UuidToString(
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+std::vector<uint8_t> to_bytevc(
+    IBuffer buffer
+    )
+{
+    auto reader = DataReader::FromBuffer(buffer);
+    auto result = std::vector<uint8_t>(reader.UnconsumedBufferLength());
+    reader.ReadBytes(result);
+    return result;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 LONG64 MacToLong(
     std::string deviceID
     )
@@ -181,10 +193,26 @@ IAsyncOperation<int> BLEHelper::InitRadio(
 VOID BLEHelper::DisconnectDevice(
     )
 {
+    if (mConnectedDevice == nullptr)
+    {
+        return;
+    }
+
+    mConnectedDevice.ConnectionStatusChanged(mConnnectionStatusChangedToken);
+    for (int i = 0; i < mSerivcesData.size();i++)
+    {
+        ServiceData serivceData = mSerivcesData.at(i);
+        for (int j = 0; j < serivceData.chars.size();j++)
+        {
+            GattCharacteristic theChar = serivceData.chars.at(j);
+            theChar.ValueChanged(serivceData.valueChangedTokens[UuidToString(theChar.Uuid())]);
+        }
+    }
+
+    mSerivcesData.clear();
+
     if (mConnectedDevice != nullptr)
         mConnectedDevice = nullptr;
-
-    mSerivces.clear();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -494,6 +522,7 @@ winrt::fire_and_forget BLEHelper::ConnectDevice(
     WriteLogFile(("ConnectDevice  " + deviceID).c_str());
 
     try {
+        mSerivcesData.clear();
         mConnectedDevice = co_await BluetoothLEDevice::FromBluetoothAddressAsync(deviceID64);
         OutputDebugString(L"FromBluetoothAddressAsync finished");
         WriteLogFile("FromBluetoothAddressAsync finished");
@@ -512,7 +541,7 @@ winrt::fire_and_forget BLEHelper::ConnectDevice(
 
     OutputDebugString(L"we got device!");
     WriteLogFile("we got device!");
-    mConnectedDevice.ConnectionStatusChanged({ this, &BLEHelper::BluetoothLEDevice_ConnectionStatusChanged });
+    mConnnectionStatusChangedToken = mConnectedDevice.ConnectionStatusChanged({ this, &BLEHelper::BluetoothLEDevice_ConnectionStatusChanged });
     BluetoothLEDevice_ConnectionStatusChanged(mConnectedDevice,nullptr);
 
     co_return;
@@ -560,7 +589,7 @@ int HasProp(
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
-flutter::EncodableMap ExportCharacteristic(
+flutter::EncodableMap BLEHelper::ExportCharacteristic(
     GattCharacteristic theChar,
     GattDescriptorsResult descriptors,
     std::string deviceID
@@ -568,6 +597,7 @@ flutter::EncodableMap ExportCharacteristic(
 {
     std::vector<flutter::EncodableValue> descriptorsArray;
 
+    WriteLogFile("DESCRIPTORS on " + UuidToString(theChar.Service().Uuid()) + " char " + UuidToString(theChar.Uuid()) + ":");
     for (uint32_t i = 0; i < descriptors.Descriptors().Size();i++)
     {
         GattDescriptor descr = descriptors.Descriptors().GetAt(i);
@@ -578,6 +608,7 @@ flutter::EncodableMap ExportCharacteristic(
             {"characteristic_uuid", UuidToString(theChar.Uuid())}
         };
 
+        WriteLogFile("\t" + UuidToString(descr.Uuid()));
         descriptorsArray.push_back(descrMap);
     }
 
@@ -632,12 +663,13 @@ winrt::fire_and_forget BLEHelper::GetServices(
     {
         GattDeviceService service = Services.Services().GetAt(i);
         std::string serviceUUID = UuidToString(service.Uuid());
-        GattCharacteristicsResult chars = co_await service.GetCharacteristicsAsync();
+        GattCharacteristicsResult chars = co_await service.GetCharacteristicsAsync(BluetoothCacheMode::Uncached);
 
         ServiceData serviceData;
-        mSerivces.push_back(serviceData);
 
+        serviceData.service = service;
         std::vector<flutter::EncodableValue> charsArray;
+
         if (chars != nullptr)
         {
             for (uint32_t j = 0; j < chars.Characteristics().Size();j++)
@@ -645,7 +677,6 @@ winrt::fire_and_forget BLEHelper::GetServices(
                 //single charactersitic
                 GattCharacteristic theChar = chars.Characteristics().GetAt(j);
                 GattDescriptorsResult descriptors = co_await theChar.GetDescriptorsAsync();
-
                 charsArray.push_back(ExportCharacteristic(theChar,descriptors,mac));
                 serviceData.chars.push_back(theChar);
             }
@@ -661,6 +692,7 @@ winrt::fire_and_forget BLEHelper::GetServices(
         };
 
         servicesArray.push_back(serviceMap);
+        mSerivcesData.push_back(serviceData);
     }
 
     //export it all now
@@ -672,7 +704,6 @@ winrt::fire_and_forget BLEHelper::GetServices(
         {"services",servicesArray}
     };
 
-    //servicesMap["services"] = "servicesArray";
     std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(servicesMap);
 
     flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnDiscoveredServices", std::move(res));
@@ -702,4 +733,195 @@ winrt::fire_and_forget BLEHelper::FakeRSSI(
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
+
+void BLEHelper::GattCharacteristic_ValueChanged(
+    GattCharacteristic sender,
+    GattValueChangedEventArgs args
+    )
+{
+    std::string uuid = UuidToString(sender.Uuid());
+    std::vector<uint8_t> bytes = to_bytevc(args.CharacteristicValue());
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+std::string GetFullUUID(
+    std::string uuid
+    )
+{
+    size_t size_s;
+    std::string four_len("0000%s-0000-1000-8000-00805f9b34fb");
+    std::string eight_len("%s-0000-1000-8000-00805f9b34fb");
+    char* pszBuff = NULL;
+    switch (uuid.length())
+    {
+        case 4:
+            size_s = four_len.length() + uuid.length() + 1;
+            pszBuff = new char[size_s];
+            sprintf_s(pszBuff, size_s,four_len.c_str(),uuid.c_str());
+        break;
+        case 8:
+            size_s = eight_len.length() + uuid.length() + 1;
+            pszBuff = new char[size_s];
+            sprintf_s(pszBuff, size_s,eight_len.c_str(), uuid.c_str());
+        break;
+        default:
+        return uuid;
+    }
+
+    std::string res(pszBuff);
+    delete[] pszBuff;
+
+    return res;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+int BLEHelper::GetServiceDataIndex(
+    std::string uuid
+    )
+{
+    std::string searchUUID = GetFullUUID(uuid);
+    for (int i = 0; mSerivcesData.size();i++)
+    {
+        ServiceData data = mSerivcesData.at(i);
+        std::string serviceUUID = UuidToString(data.service.Uuid());
+        if (!serviceUUID.compare(searchUUID))
+            return i;
+    }
+
+    return -1;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+GattCharacteristic BLEHelper::FindCharactersitic(
+    ServiceData serviceData,
+    std::string charUUID
+    )
+{
+    std::string searchUUID = GetFullUUID(charUUID);
+
+    for (int i = 0; i < serviceData.chars.size();i++)
+    {
+        GattCharacteristic theChar = serviceData.chars.at(i);
+        std::string theCharUUID = UuidToString(theChar.Uuid());
+        if (!theCharUUID.compare(searchUUID))
+            return theChar;
+
+    }
+
+    return nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+winrt::fire_and_forget BLEHelper::SetCharNotify(
+    bool Enable,
+    bool forceIndications,
+    GattCharacteristic theChar,
+    std::string deviceID,
+    ServiceData serviceData,
+    //as the dart side can ask for short servcie and char we need to passback the same
+    std::string service_uuid,
+    std::string characteristic_uuid
+    )
+{
+    GattClientCharacteristicConfigurationDescriptorValue descrValue;
+    GattCharacteristicProperties props = theChar.CharacteristicProperties();
+    std::string full_char_uuid = UuidToString(theChar.Uuid());
+    bool hasInidcate = ((props & GattCharacteristicProperties::Indicate) == GattCharacteristicProperties::Indicate);
+    bool hasNotify = ((props & GattCharacteristicProperties::Notify) == GattCharacteristicProperties::Notify);
+
+    OutputDebugString((L"setNotifyValue1 on\nService " + winrt::to_hstring(serviceData.service.Uuid()) +
+        L" on char " + winrt::to_hstring(full_char_uuid) + L"\n").c_str());
+
+    WriteLogFile("setNotifyValue1 on\nService (short uuid) " + service_uuid +
+        " on char (full uuid) " + full_char_uuid + "\n");
+
+    if (!hasInidcate && !hasNotify)
+    {
+        WriteLogFile("char has no inidcate or notif, going out");
+        co_return;
+    }
+
+    //follow android logic
+    if(!hasInidcate && forceIndications)
+    {
+        WriteLogFile("char has no inidcate but force is on, going out");
+        co_return;
+    }
+
+    // If a characteristic supports both notifications and indications,
+    // we use notifications. This matches how CoreBluetooth works on iOS.
+    // Except of course, if forceIndications is enabled.
+    if(hasInidcate)
+        descrValue = GattClientCharacteristicConfigurationDescriptorValue::Indicate;
+    if(hasNotify)
+        descrValue = GattClientCharacteristicConfigurationDescriptorValue::Notify;
+    if(forceIndications)
+        descrValue = GattClientCharacteristicConfigurationDescriptorValue::Indicate;
+
+    //Notify, Indicate, None
+    GattCommunicationStatus status;
+    if (Enable)
+    {
+        WriteLogFile("enabling notif on ");
+        try
+        {
+            std::string full_char_uuid2 = UuidToString(theChar.Uuid());
+            WriteLogFile("config on full_char_uuid2 - " + full_char_uuid2);
+            status = co_await theChar.WriteClientCharacteristicConfigurationDescriptorAsync(descrValue);
+            WriteLogFile("no crash at least");
+        }
+        catch (...)
+        {
+            WriteLogFile("crash on setting config");
+            std::string full_char_uuid2 = UuidToString(theChar.Uuid());
+            WriteLogFile("full_char_uuid2 - " + full_char_uuid2 );
+
+            OutputDebugString((L"setNotifyValue ERROR on\nService " + winrt::to_hstring(serviceData.service.Uuid()) +
+                L" on char " + winrt::to_hstring(full_char_uuid) + L"\n").c_str());
+            status = GattCommunicationStatus::ProtocolError;
+        }
+
+        if (status == GattCommunicationStatus::Success)
+        {
+            serviceData.valueChangedTokens[full_char_uuid] = theChar.ValueChanged({ this, &BLEHelper::GattCharacteristic_ValueChanged });
+        }
+    }
+    else
+    {
+        status = co_await theChar.WriteClientCharacteristicConfigurationDescriptorAsync(GattClientCharacteristicConfigurationDescriptorValue::None);
+        theChar.ValueChanged(std::exchange(serviceData.valueChangedTokens[full_char_uuid], {}));
+    }
+
+    flutter::EncodableMap map = {
+        {"remote_id",deviceID},
+        {"service_uuid",service_uuid},
+        {"characteristic_uuid",characteristic_uuid},
+        {"descriptor_uuid",UuidToString(theChar.Uuid())},
+        {"value",""},
+        {"success",(status == GattCommunicationStatus::Success ? 1 : 0)},
+        {"error_code", (int)status},
+        {"error_string", ""}
+    };
+
+    //now add the callback!
+    std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(map);
+
+    flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnDescriptorWritten", std::move(res));
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+ServiceData BLEHelper::GetServiceData(
+    int nIndex
+    )
+{
+    return mSerivcesData.at(nIndex);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 

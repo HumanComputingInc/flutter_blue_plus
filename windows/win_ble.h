@@ -69,10 +69,10 @@ int bmConnectionStatusEnum(BluetoothConnectionStatus status);
 
 class ServiceData
 {
-private:
 public:
     GattDeviceService service{nullptr};
     std::vector<GattCharacteristic> chars;
+    std::map<std::string, winrt::event_token> valueChangedTokens;
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -105,7 +105,7 @@ class BLEHelper
 
     //connected device data
     BluetoothLEDevice mConnectedDevice{ nullptr };
-    std::vector<ServiceData> mSerivces;
+    std::vector<ServiceData> mSerivcesData;
 public:
     BLEHelper(
         );
@@ -214,6 +214,40 @@ public:
     winrt::fire_and_forget GetServices();
     winrt::fire_and_forget FakeRSSI();
 
+    winrt::fire_and_forget SetCharNotify(
+        bool Enable,
+        bool forceIndications,
+        GattCharacteristic theChar,
+        std::string deviceID,
+        ServiceData serviceData,
+        std::string service_uuid,
+        std::string characteristic_uuid
+        );
+
+    void GattCharacteristic_ValueChanged(
+        GattCharacteristic sender,
+        GattValueChangedEventArgs args
+        );
+
+
+    int GetServiceDataIndex(
+        std::string uuid
+        );
+
+    ServiceData GetServiceData(
+        int nIndex
+        );
+
+    GattCharacteristic FindCharactersitic(
+        ServiceData serviceData,
+        std::string charUUID
+    );
+
+    flutter::EncodableMap ExportCharacteristic(
+        GattCharacteristic theChar,
+        GattDescriptorsResult descriptors,
+        std::string deviceID
+        );
 };
 
 //////////////////////////////////////////////////////////////////////////////////////////

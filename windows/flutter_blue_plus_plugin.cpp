@@ -123,6 +123,7 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   }
   else if (method_call.method_name().compare("startScan") == 0)
   {
+      mpBleHelper->WriteLogFile("inside start scan");
       flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
       flutter::EncodableValue withServices = args[flutter::EncodableValue("with_services")];
       std::vector<flutter::EncodableValue> serviceList = std::get<std::vector<flutter::EncodableValue>>(withServices);
@@ -150,11 +151,13 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   }
   else if (method_call.method_name().compare("stopScan") == 0)
   {
+      mpBleHelper->WriteLogFile("inside stop scan");
       mpBleHelper->StopScan();
       result->Success(true);
   }
   else if (method_call.method_name().compare("connect") == 0)
   {
+      mpBleHelper->WriteLogFile("inside connect");
       flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
       std::string  mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
 
@@ -163,12 +166,14 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   }
   else if (method_call.method_name().compare("disconnect") == 0)
   {
+      mpBleHelper->WriteLogFile("inside disconect");
       mpBleHelper->DisconnectDevice();
       result->Success(true);
   }
  
   else if (method_call.method_name().compare("discoverServices") == 0)
   {
+      mpBleHelper->WriteLogFile("discovering services");
       mpBleHelper->GetServices();
       result->Success(true);
   }
@@ -179,14 +184,41 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   }
   else if (method_call.method_name().compare("setNotifyValue") == 0)
   {
-      /**
       flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
-      std::string mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
+      std::string deviceID = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
       std::string service_uuid = std::get<std::string>(args[flutter::EncodableValue("service_uuid")]);
       std::string characteristic_uuid = std::get<std::string>(args[flutter::EncodableValue("characteristic_uuid")]);
-      bool enable = std::get<bool>(args[flutter::EncodableValue("remote_id")]);
+      bool enable = std::get<bool>(args[flutter::EncodableValue("enable")]);
       bool forceIndications = std::get<bool>(args[flutter::EncodableValue("force_indications")]);
-      **/
+      OutputDebugString((L"setNotifyValue on\nService " + winrt::to_hstring(service_uuid) +
+          L" on char " + winrt::to_hstring(characteristic_uuid) + L"\n").c_str());
+
+      mpBleHelper->WriteLogFile("setNotifyValue on\nService " + service_uuid +
+          " on char " + characteristic_uuid + "\n");
+
+      int ServiceIndex = mpBleHelper->GetServiceDataIndex(service_uuid);
+      if (ServiceIndex == -1)
+      {
+          mpBleHelper->WriteLogFile("service not found");
+          result->Error("setNotifyValue", "service was not found");
+          return;
+      }
+
+      mpBleHelper->WriteLogFile("service found,getting service data");
+      ServiceData serviceData = mpBleHelper->GetServiceData(ServiceIndex);
+
+      GattCharacteristic theChar = mpBleHelper->FindCharactersitic(serviceData, characteristic_uuid);
+      if (theChar == nullptr)
+      {
+          mpBleHelper->WriteLogFile("char not found");
+
+          result->Error("setNotifyValue", "GattCharacteristic was not found");
+          return;
+      }
+
+      mpBleHelper->WriteLogFile("got the char");
+      mpBleHelper->SetCharNotify(enable, forceIndications, theChar, deviceID, serviceData,service_uuid,characteristic_uuid);
+
       result->Success(true);
   }
   else
