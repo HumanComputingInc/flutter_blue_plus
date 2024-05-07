@@ -159,15 +159,16 @@ void FlutterBluePlusPlugin::HandleMethodCall(
   {
       mpBleHelper->WriteLogFile("inside connect");
       flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
-      std::string  mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
+      std::string mac = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
 
       mpBleHelper->ConnectDevice(mac);
       result->Success(true);
   }
   else if (method_call.method_name().compare("disconnect") == 0)
   {
+      std::string mac = std::get<std::string>(*method_call.arguments());
       mpBleHelper->WriteLogFile("inside disconect");
-      mpBleHelper->DisconnectDevice();
+      mpBleHelper->DisconnectDevice(mac);
       result->Success(true);
   }
  
@@ -221,6 +222,65 @@ void FlutterBluePlusPlugin::HandleMethodCall(
 
       result->Success(true);
   }
+  else if (method_call.method_name().compare("readCharacteristic") == 0)
+  {
+      flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
+      std::string deviceID = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
+      std::string service_uuid = std::get<std::string>(args[flutter::EncodableValue("service_uuid")]);
+      std::string characteristic_uuid = std::get<std::string>(args[flutter::EncodableValue("characteristic_uuid")]);
+      int ServiceIndex = mpBleHelper->GetServiceDataIndex(service_uuid);
+      if (ServiceIndex == -1)
+      {
+          mpBleHelper->WriteLogFile("service not found");
+          result->Error("readCharacteristic", "service was not found");
+          return;
+      }
+      mpBleHelper->WriteLogFile("service found,getting service data");
+      ServiceData serviceData = mpBleHelper->GetServiceData(ServiceIndex);
+
+      GattCharacteristic theChar = mpBleHelper->FindCharactersitic(serviceData, characteristic_uuid);
+      if (theChar == nullptr)
+      {
+          mpBleHelper->WriteLogFile("char not found");
+
+          result->Error("readCharacteristic", "GattCharacteristic was not found");
+          return;
+      }
+
+      mpBleHelper->ReadCharactersitc(theChar, deviceID, serviceData, service_uuid, characteristic_uuid);
+      result->Success(true);
+  }
+  else if (method_call.method_name().compare("writeCharacteristic") == 0)
+  {
+      flutter::EncodableMap args = std::get<flutter::EncodableMap>(*method_call.arguments());
+      std::string deviceID = std::get<std::string>(args[flutter::EncodableValue("remote_id")]);
+      std::string service_uuid = std::get<std::string>(args[flutter::EncodableValue("service_uuid")]);
+      std::string characteristic_uuid = std::get<std::string>(args[flutter::EncodableValue("characteristic_uuid")]);
+      std::string value = std::get<std::string>(args[flutter::EncodableValue("value")]);
+      int writeType = std::get<int>(args[flutter::EncodableValue("write_type")]);
+
+      int ServiceIndex = mpBleHelper->GetServiceDataIndex(service_uuid);
+      if (ServiceIndex == -1)
+      {
+          mpBleHelper->WriteLogFile("service not found");
+          result->Error("readCharacteristic", "service was not found");
+          return;
+      }
+      mpBleHelper->WriteLogFile("service found,getting service data");
+      ServiceData serviceData = mpBleHelper->GetServiceData(ServiceIndex);
+
+      GattCharacteristic theChar = mpBleHelper->FindCharactersitic(serviceData, characteristic_uuid);
+      if (theChar == nullptr)
+      {
+          mpBleHelper->WriteLogFile("char not found");
+
+          result->Error("readCharacteristic", "GattCharacteristic was not found");
+          return;
+      }
+
+      mpBleHelper->WriteCharactersitc(theChar, deviceID, serviceData, service_uuid, characteristic_uuid,value,writeType);
+      result->Success(true);
+      }
   else
   {
         mpBleHelper->WriteLogFile(("Not implemented - " + method_call.method_name()).c_str());

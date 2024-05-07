@@ -99,6 +99,7 @@ class BLEHelper
     winrt::event_token mSysDeviceWatcherStoppedToken;
 
     winrt::event_token mConnnectionStatusChangedToken;
+    winrt::event_token gatt_services_changed_token_;
     std::map<std::string, flutter::EncodableMap> mDevices;
     std::map<std::string, flutter::EncodableMap> mSysDevices;
     std::ofstream mLogFile;
@@ -117,6 +118,7 @@ public:
     );
 
     VOID DisconnectDevice(
+        std::string mac
         );
 
     LONG StartScan(
@@ -247,6 +249,33 @@ public:
         GattCharacteristic theChar,
         GattDescriptorsResult descriptors,
         std::string deviceID
+        );
+
+    void GattService_Changed(
+        BluetoothLEDevice device,
+        IInspectable object
+    );
+
+    winrt::fire_and_forget FakeDeviceDisconnect(
+        std::string deviceID
+        );
+
+    winrt::fire_and_forget ReadCharactersitc(
+        GattCharacteristic theChar,
+        std::string deviceID,
+        ServiceData serviceData,
+        std::string service_uuid,
+        std::string characteristic_uuid
+        );
+
+    winrt::fire_and_forget WriteCharactersitc(
+        GattCharacteristic theChar,
+        std::string deviceID,
+        ServiceData serviceData,
+        std::string service_uuid,
+        std::string characteristic_uuid,
+        std::string value,
+        int writeType
         );
 };
 
