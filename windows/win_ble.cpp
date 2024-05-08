@@ -103,6 +103,52 @@ static std::string DeviceIdToMac(
 
 //////////////////////////////////////////////////////////////////////////////////////////
 
+std::string GetFullUUID(
+    std::string uuid
+    )
+{
+    size_t size_s;
+    std::string four_len("0000%s-0000-1000-8000-00805f9b34fb");
+    std::string eight_len("%s-0000-1000-8000-00805f9b34fb");
+    char* pszBuff = NULL;
+    switch (uuid.length())
+    {
+    case 4:
+        size_s = four_len.length() + uuid.length() + 1;
+        pszBuff = new char[size_s];
+        sprintf_s(pszBuff, size_s, four_len.c_str(), uuid.c_str());
+        break;
+    case 8:
+        size_s = eight_len.length() + uuid.length() + 1;
+        pszBuff = new char[size_s];
+        sprintf_s(pszBuff, size_s, eight_len.c_str(), uuid.c_str());
+        break;
+    default:
+        return uuid;
+    }
+
+    std::string res(pszBuff);
+    delete[] pszBuff;
+
+    return res;
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
+std::string GetShortUUID(
+    std::string uuid
+    )
+{
+    std::string four_len("0000180a-0000-1000-8000-00805f9b34fb");
+    if (uuid.length() < 8)
+        return std::string(uuid);
+
+
+    return uuid.substr(4, 4);
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////
+
 BLEHelper::BLEHelper(
     )
 {
@@ -757,14 +803,14 @@ winrt::fire_and_forget BLEHelper::FakeRSSI(
 
 std::string uint8_vector_to_hex_string(
     const std::vector<uint8_t>& v
-)
+    )
 {
     std::stringstream ss;
     ss << std::hex << std::setfill('0');
     std::vector<uint8_t>::const_iterator it;
 
     for (it = v.begin(); it != v.end(); it++) {
-        ss << "\\x" << std::setw(2) << static_cast<unsigned>(*it);
+        ss  << std::setw(2) << static_cast<unsigned>(*it);
     }
 
     return ss.str();
@@ -777,54 +823,25 @@ void BLEHelper::GattCharacteristic_ValueChanged(
     GattValueChangedEventArgs args
     )
 {
-    std::string uuid = UuidToString(sender.Uuid());
-    std::vector<uint8_t> data = to_bytevc(args.CharacteristicValue());
+    //dart seems to be always using short uuids?
+    std::string char_uuid = GetShortUUID(UuidToString(sender.Uuid()));
+    std::string service_uuid = GetShortUUID(UuidToString(sender.Service().Uuid()));
 
+    std::vector<uint8_t> data = to_bytevc(args.CharacteristicValue());
+    std::string str_data = uint8_vector_to_hex_string(data);
     std::string mac = LongToMac(mConnectedDevice.BluetoothAddress());
     flutter::EncodableMap map = {
         {"remote_id",mac},
-        //may need the short one?
-        {"service_uuid",UuidToString(sender.Service().Uuid())},
-        {"characteristic_uuid",UuidToString(sender.Uuid())},
-        {"value",uint8_vector_to_hex_string(data)},
+        {"service_uuid",service_uuid},
+        {"characteristic_uuid",char_uuid},
+        {"value",str_data},
         {"success",1},
         {"error_code", 0},
         {"error_string", ""}
     };
+
     std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(map);
     flutter_blue_plus::FlutterBluePlusPlugin::mMethodChannel->InvokeMethod("OnCharacteristicReceived", std::move(res));
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////
-
-std::string GetFullUUID(
-    std::string uuid
-    )
-{
-    size_t size_s;
-    std::string four_len("0000%s-0000-1000-8000-00805f9b34fb");
-    std::string eight_len("%s-0000-1000-8000-00805f9b34fb");
-    char* pszBuff = NULL;
-    switch (uuid.length())
-    {
-        case 4:
-            size_s = four_len.length() + uuid.length() + 1;
-            pszBuff = new char[size_s];
-            sprintf_s(pszBuff, size_s,four_len.c_str(),uuid.c_str());
-        break;
-        case 8:
-            size_s = eight_len.length() + uuid.length() + 1;
-            pszBuff = new char[size_s];
-            sprintf_s(pszBuff, size_s,eight_len.c_str(), uuid.c_str());
-        break;
-        default:
-        return uuid;
-    }
-
-    std::string res(pszBuff);
-    delete[] pszBuff;
-
-    return res;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -1140,7 +1157,6 @@ winrt::fire_and_forget BLEHelper::WriteCharactersitc(
         result = co_await theChar.WriteValueAsync(data);
     }
 
-
     if (result == GattCommunicationStatus::Success)
     {
         flutter::EncodableMap map = {
@@ -1164,7 +1180,7 @@ winrt::fire_and_forget BLEHelper::WriteCharactersitc(
             {"value",""},
             {"success",0},
             {"error_code", 0},
-            {"error_string", "failed to read"}
+            {"error_string", "failed to write"}
         };
 
         std::unique_ptr<flutter::EncodableValue> res = std::make_unique<flutter::EncodableValue>(map);
